@@ -31,6 +31,15 @@ class Tests(unittest.TestCase):
         self.assertTrue(type(cs[0][1]) == float)
         self.assertEqual(3661.1, cs[2][2])
 
+    def test_chapters_file2(self):
+        with open("test_data/external_chapters.csv") as f:
+            cs = file_to_chapters_iter(f)
+            cs = list(cs) 
+        self.assertEqual(17, len(cs))
+        self.assertEqual(cs[1][2], 29*60+46.1)
+        self.assertTrue(cs[16][2] is None)
+
+
     def test_chapters_meta(self):
         with open("test_data/chapters.txt", "rb") as f:
             data = f.read()

@@ -58,6 +58,7 @@ def parse_args(args):
             help="minimal duration of silence, default works fine, so change only, if necessary")
     parser.add_argument("--dry", action="store_true", help="dry run, just prints calculated parts and exits")
     parser.add_argument("-o", "--split-only", action="store_true", help="do not transcode, just split to parts using same audio codec")
+    parser.add_argument("--ignore-chapters", action="store_true", help="ignores chapters metadata, if they are pressent")
     parser.add_argument("-r", "--remove", action="store_true",
                         help="remove existing directory of splitted files")
     parser.add_argument("-q", "--quality", choices=["low", "normal", "high", "top"], default="high",
@@ -66,7 +67,7 @@ def parse_args(args):
                         help="duration of split segment in seconds (in case chapers are not available)")
     parser.add_argument("-c", "--chapters", type=argparse.FileType("r"),
                         help="CSV file with chapters information, each line should contain: chapter_name,start_in_secs,end_in_secs  (optionaly start and end can be in form hh:mm:ss.m)")
-    parser.add_argument("--activation_bytes",
+    parser.add_argument("--activation-bytes",
                         help="activation bytes for aax format")
     return parser.parse_args(args)
 
@@ -169,7 +170,7 @@ def transcode_chapter(fname, dest_dir, op, ext, i, chap, start, end, activation_
     try:
         params=["ffmpeg", "-v", "error", "-nostdin"]
         if activation_bytes:
-            params.extend("-activation_bytes", activation_bytes)
+            params.extend(["-activation_bytes", activation_bytes])
         params.extend(["-i", fname, "-vn", "-ss", "%0.2f"%start])
         if not end is None:
             params.extend(["-to", "%0.2f"%end])
@@ -253,7 +254,7 @@ def file_to_chapters_iter(f):
     def format_line(l):
         if len(l) < 3:
             raise Exception("Chapters file lines must have at least 3 fields")
-        return safe_name(l[0]), secs_from_time(l[1]), secs_from_time(l[2])
+        return safe_name(l[0]), secs_from_time(l[1]), secs_from_time(l[2]) if l[2] else None
     return map(format_line, reader)
 
 def _run_ffprobe_for_chapters(f):
