@@ -14,7 +14,7 @@ from functools import reduce
 
 log = logging.getLogger()
 
-__version__ = "0.1"
+__version__ = "0.1.1"
 
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
@@ -55,6 +55,7 @@ def parse_args(args):
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("files", metavar="FILE",
                         nargs="+", help="audiobook files")
+    parser.add_argument("--search-dir", action="store_true", help="if FILE argument is directory it will recusivelly search for audio files and split them")
     parser.add_argument("--debug", action="store_true", help="debug logging")
     parser.add_argument("-d", "--delete", action="store_true",
                         help="delete original file after split and conversion")
@@ -107,10 +108,26 @@ def main(args=sys.argv[1:]):
     pool = futures.ThreadPoolExecutor(multiprocessing.cpu_count())
 
     for fname in opts.files:
-        try:
-            split_file(fname, pool, opts)
-        except:
-            log.exception("Error during splitting file %s", fname)
+        if os.path.isdir(fname):
+            if opts.search_dir:
+                files=[]
+                for dirpath, _dirnames, filenames in os.walk(fname):
+                    for f in filenames:
+                        ext = os.path.splitext(f)[1]
+                        if ext in (".mp3", ".m4b", ".m4a", ".mka", ".aax"):
+                            files.append(os.path.join(dirpath,f))
+                for f in files:
+                    try:
+                        split_file(f, pool, opts)
+                    except:
+                        log.exception("Error during splitting file %s", f)
+            else:
+                sys.exit("Arguments must be file, but you can force directory with --search-dir")
+        else:
+            try:
+                split_file(fname, pool, opts)
+            except:
+                log.exception("Error during splitting file %s", fname)
     log.debug("All files analyzed")
     pool.shutdown()
     log.debug("Done")
@@ -134,9 +151,13 @@ def map_ext(ext):
 
 
 def split_file(fname, pool, opts):
+    log.debug("Processing file %s", fname)
     base_dir, base_name = os.path.split(fname)
     base_name, format_ext = os.path.splitext(base_name)
     dest_dir = os.path.join(base_dir, base_name)
+
+    if format_ext == ".aax" and not opts.activation_bytes and not len(opts.activation_bytes) == 8:
+        raise Exception("For aax file activation bytes must be provided and activation bytes must 8 chars long")
 
     if os.path.exists(dest_dir):
         if opts.remove:
