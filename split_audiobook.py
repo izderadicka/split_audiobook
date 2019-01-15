@@ -158,6 +158,8 @@ def split_file(fname, pool, opts):
 
     if format_ext == ".aax" and not opts.activation_bytes and not len(opts.activation_bytes) == 8:
         raise Exception("For aax file activation bytes must be provided and activation bytes must 8 chars long")
+    elif opts.activation_bytes and format_ext != ".aax":
+        opts.activation_bytes = None
 
     if os.path.exists(dest_dir):
         if opts.remove:
