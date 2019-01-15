@@ -14,6 +14,8 @@ from functools import reduce
 
 log = logging.getLogger()
 
+__version__ = "0.1"
+
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
 Split points are either chapters defined in the audiobook, or supplied in external CSV file,
@@ -76,6 +78,7 @@ def parse_args(args):
                         help="CSV file with chapters information, each line should contain: chapter_name,start_in_secs,end_in_secs  (optionaly start and end can be in form hh:mm:ss.m)")
     parser.add_argument("--activation-bytes",
                         help="activation bytes for aax format")
+    parser.add_argument("--version", action="version", version=__version__, help="shows version")
     return parser.parse_args(args)
 
 

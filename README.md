@@ -22,6 +22,7 @@ Install
 -------
 
 It's just one script - so you can just [download](https://raw.githubusercontent.com/izderadicka/split_audiobook/master/split_audiobook.py) and run in python3 interpreter. Script is intentionaly using only python core modules.
+Or you can install locally with `sudo pip3 install git+https://github.com/izderadicka/split_audiobook`.
 
 License
 -------
