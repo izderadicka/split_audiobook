@@ -156,8 +156,13 @@ def split_file(fname, pool, opts):
     base_name, format_ext = os.path.splitext(base_name)
     dest_dir = os.path.join(base_dir, base_name)
 
-    if format_ext == ".aax" and not opts.activation_bytes and not len(opts.activation_bytes) == 8:
-        raise Exception("For aax file activation bytes must be provided and activation bytes must 8 chars long")
+    if format_ext == ".aax":
+        if not opts.activation_bytes:
+            activation_file = os.path.expanduser("~/.audible_activation_bytes")
+            if os.access(activation_file, os.R_OK):
+                opts.activation_bytes = open(activation_file).read().strip()
+        if not opts.activation_bytes or len(opts.activation_bytes) != 8:
+            raise Exception("For aax file activation bytes must be provided and activation bytes must be 8 chars long")
     elif opts.activation_bytes and format_ext != ".aax":
         opts.activation_bytes = None
 
