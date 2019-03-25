@@ -14,14 +14,15 @@ from functools import reduce
 
 log = logging.getLogger()
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
 Split points are either chapters defined in the audiobook, or supplied in external CSV file,
 or split happens in silence periods in approximately same distance (--length).
-Use --dry option to see how audio will be split, without actual conversion.
-Requires ffmpeg adn ffprobe version v >= 2.8.11
+Use --dry option to see how audio will be split, without actual conversion or --write-chapters 
+to write chapters into separate file in simple csv format.
+Requires ffmpeg and ffprobe version v >= 2.8.11
 Supports input formats m4a, m4b, mp3, aax (mka should also work but not tested)
 """
 
@@ -57,7 +58,7 @@ def parse_args(args):
                         nargs="+", help="audiobook files")
     parser.add_argument("--search-dir", action="store_true", help="if FILE argument is directory it will recusivelly search for audio files and split them")
     parser.add_argument("--debug", action="store_true", help="debug logging")
-    parser.add_argument("-d", "--delete", action="store_true",
+    parser.add_argument("--delete", action="store_true",
                         help="delete original file after split and conversion")
     parser.add_argument("-s", "--silence", type=int, default=30,
                         help="silence level in -x dB from max level")
@@ -65,11 +66,13 @@ def parse_args(args):
                         help="minimal duration of silence, default works fine, so change only, if necessary")
     parser.add_argument("--dry", action="store_true",
                         help="dry run, just prints calculated parts and exits")
+    parser.add_argument("--write-chapters", action="store_true", 
+        help="instead of spliting file, it just writes chapters into original_file.chapters csv file")
     parser.add_argument("-o", "--split-only", action="store_true",
                         help="do not transcode, just split to parts using same audio codec")
     parser.add_argument("--ignore-chapters", action="store_true",
                         help="ignores chapters metadata, if they are pressent")
-    parser.add_argument("-r", "--remove", action="store_true",
+    parser.add_argument("--remove", action="store_true",
                         help="remove existing directory of splitted files")
     parser.add_argument("-q", "--quality", choices=["low", "normal", "high", "top"], default="high",
                         help="opus codec quality params")
@@ -141,6 +144,13 @@ def print_chapters(chapters, opts):
             print("%03d - %s  (%0.2f - %0.2f dur: %0.2f)" %
                   (i, chap, start, end, end-start))
 
+def write_chapters(chapters, audio_file):
+    with open(audio_file+".chapters",'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(('title', 'start', 'end'))
+        writer.writerows(chapters)
+
+
 
 EXT_MAP = {".m4b": ".m4a", ".aax": ".m4a"}
 
@@ -166,13 +176,6 @@ def split_file(fname, pool, opts):
     elif opts.activation_bytes and format_ext != ".aax":
         opts.activation_bytes = None
 
-    if os.path.exists(dest_dir):
-        if opts.remove:
-            shutil.rmtree(dest_dir)
-        else:
-            log.warn("Directory %s exists skipping split", dest_dir)
-            return
-
     chapters = None
     if opts.chapters:
         chapters = file_to_chapters_iter(opts.chapters)
@@ -186,6 +189,17 @@ def split_file(fname, pool, opts):
         print("File %s chapters" % fname)
         print_chapters(chapters, opts)
         return
+
+    if opts.write_chapters:
+        write_chapters(chapters, fname)
+        return
+
+    if os.path.exists(dest_dir):
+        if opts.remove:
+            shutil.rmtree(dest_dir)
+        else:
+            log.warn("Directory %s exists skipping split", dest_dir)
+            return
 
     os.mkdir(dest_dir)
 
@@ -238,7 +252,7 @@ def transcode_chapter(fname, dest_dir, op, ext, i, chap, start, end, activation_
         log.exception(
             "Transcoding of chapter %d - %s of file %s failed",  i, chap, fname)
         return
-    log.debug("Finished transcoding chapter")
+    log.debug("Finished transcoding chapter %d -%s of file %s", i, chap, fname)
     if p.returncode != 0:
         log.error("Error transcoding chapter %d - %s of file %s return code: %d\nStderr:\n%s",
                   i, chap, fname, p.returncode, err)
@@ -261,7 +275,7 @@ def calc_split_points(fname, opts):
         next_split = prev_split + opts.length
         if total_duration - next_split < ELASTICITY * opts.length:
             # dont split only small part will remain
-            next_split = None
+            next_split = total_duration
         else:
             silence = silences.find_after(next_split)
             if silence:
@@ -282,7 +296,7 @@ def calc_split_points(fname, opts):
 
                 next_split = split_at
             else:
-                next_split = None
+                next_split = total_duration
         yield ("Part %d" % index, prev_split, next_split)
         prev_split = next_split
         index += 1
