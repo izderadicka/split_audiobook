@@ -91,7 +91,10 @@ def test_ff():
 
 
 def test_exe(name):
-    for p in os.environ.get("PATH", "").split(":"):
+    import sys 
+    if sys.platform == "win32" and not name.endswith(".exe"): 
+        name += ".exe"
+    for p in os.environ.get("PATH", "").split(os.pathsep):
         exe = os.path.join(p, name)
         if os.access(exe, os.X_OK):
             return True
