@@ -14,7 +14,7 @@ from functools import reduce
 
 log = logging.getLogger()
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
@@ -419,7 +419,7 @@ class SilenceDetector:
 
     def _detect(self):
         data = self._run_ffmpeg()
-        data = data.decode("utf-8").splitlines().__iter__()
+        data = data.decode("utf-8", "replace").splitlines().__iter__()
         for l in data:
             m = self.DURATION_RE.search(l)
             if m:
