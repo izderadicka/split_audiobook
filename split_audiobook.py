@@ -80,7 +80,7 @@ def parse_args(args):
                         help="opus codec quality params")
     parser.add_argument("-l", "--length", type=float, default=1800,
                         help="duration of split segment in seconds (in case chapers are not available)")
-    parser.add_argument("-c", "--chapters", type=argparse.FileType("r"),
+    parser.add_argument("-c", "--chapters", type=argparse.FileType("r", encoding="utf-8", errors="replace"),
                         help="CSV file with chapters information, each line should contain: chapter_name,start_in_secs,end_in_secs  (optionaly start and end can be in form hh:mm:ss.m)")
     parser.add_argument("--activation-bytes",
                         help="activation bytes for aax format")
@@ -152,7 +152,7 @@ def print_chapters(chapters, opts):
 
 
 def write_chapters(chapters, audio_file):
-    with open(audio_file+".chapters", 'w') as f:
+    with open(audio_file+".chapters", 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(('title', 'start', 'end'))
         writer.writerows(chapters)
