@@ -21,7 +21,7 @@ Splits large audiobook files into smaller parts which are then optionally encode
 Split points are either chapters defined in the audiobook, or supplied in external CSV file,
 or split happens in silence periods in approximately same distance (--length).
 Use --dry option to see how audio will be split, without actual conversion or --write-chapters 
-to write chapters into separate file in simple csv format.
+to write chapters into separate file in simple CSV format.
 Requires ffmpeg and ffprobe version v >= 2.8.11
 Supports input formats m4a, m4b, mp3, aax (mka should also work but not tested)
 """
@@ -54,10 +54,12 @@ def parse_args(args):
     parser = argparse.ArgumentParser(
         description=ABOUT,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("files", metavar="FILE",
-                        nargs="+", help="audiobook files")
-    parser.add_argument("--search-dir", action="store_true", help="if FILE argument is directory it will recusivelly search for audio files and split them")
-    parser.add_argument("--debug", action="store_true", help="debug logging")
+    parser.add_argument("files", metavar="FILE", nargs="+",
+                        help="audiobook files")
+    parser.add_argument("--search-dir", action="store_true",
+                        help="if FILE argument is directory it will recusivelly search for audio files and split them")
+    parser.add_argument("--debug", action="store_true",
+                        help="debug logging")
     parser.add_argument("--delete", action="store_true",
                         help="delete original file after split and conversion")
     parser.add_argument("-s", "--silence", type=int, default=30,
@@ -66,8 +68,8 @@ def parse_args(args):
                         help="minimal duration of silence, default works fine, so change only, if necessary")
     parser.add_argument("--dry", action="store_true",
                         help="dry run, just prints calculated parts and exits")
-    parser.add_argument("--write-chapters", action="store_true", 
-        help="instead of spliting file, it just writes chapters into original_file.chapters csv file")
+    parser.add_argument("--write-chapters", action="store_true",
+                        help="instead of spliting file, it just writes chapters into original_file.chapters CSV file")
     parser.add_argument("-o", "--split-only", action="store_true",
                         help="do not transcode, just split to parts using same audio codec")
     parser.add_argument("--ignore-chapters", action="store_true",
@@ -82,7 +84,8 @@ def parse_args(args):
                         help="CSV file with chapters information, each line should contain: chapter_name,start_in_secs,end_in_secs  (optionaly start and end can be in form hh:mm:ss.m)")
     parser.add_argument("--activation-bytes",
                         help="activation bytes for aax format")
-    parser.add_argument("--version", action="version", version=__version__, help="shows version")
+    parser.add_argument("--version", action="version", version=__version__,
+                        help="shows version")
     return parser.parse_args(args)
 
 
@@ -91,8 +94,8 @@ def test_ff():
 
 
 def test_exe(name):
-    import sys 
-    if sys.platform == "win32" and not name.endswith(".exe"): 
+    import sys
+    if sys.platform == "win32" and not name.endswith(".exe"):
         name += ".exe"
     for p in os.environ.get("PATH", "").split(os.pathsep):
         exe = os.path.join(p, name)
@@ -116,12 +119,12 @@ def main(args=sys.argv[1:]):
     for fname in opts.files:
         if os.path.isdir(fname):
             if opts.search_dir:
-                files=[]
+                files = []
                 for dirpath, _dirnames, filenames in os.walk(fname):
                     for f in filenames:
                         ext = os.path.splitext(f)[1]
                         if ext in (".mp3", ".m4b", ".m4a", ".mka", ".aax"):
-                            files.append(os.path.join(dirpath,f))
+                            files.append(os.path.join(dirpath, f))
                 for f in files:
                     try:
                         split_file(f, pool, opts)
@@ -147,12 +150,12 @@ def print_chapters(chapters, opts):
             print("%03d - %s  (%0.2f - %0.2f dur: %0.2f)" %
                   (i, chap, start, end, end-start))
 
+
 def write_chapters(chapters, audio_file):
-    with open(audio_file+".chapters",'w') as f:
+    with open(audio_file+".chapters", 'w') as f:
         writer = csv.writer(f)
         writer.writerow(('title', 'start', 'end'))
         writer.writerows(chapters)
-
 
 
 EXT_MAP = {".m4b": ".m4a", ".aax": ".m4a"}
@@ -201,7 +204,7 @@ def split_file(fname, pool, opts):
         if opts.remove:
             shutil.rmtree(dest_dir)
         else:
-            log.warn("Directory %s exists skipping split", dest_dir)
+            log.warning("Directory %s exists skipping split", dest_dir)
             return
 
     os.mkdir(dest_dir)
