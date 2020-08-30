@@ -72,7 +72,7 @@ def parse_args(args):
     parser.add_argument("--write-chapters", action="store_true",
                         help="instead of spliting file, it just writes chapters into original_file.chapters CSV file")
     parser.add_argument("--cue-format", action="store_true",
-                        help="use cue format instead of CSV to write chapters")
+                        help="use cue format instead of CSV to read and write chapters")
     parser.add_argument("-o", "--split-only", action="store_true",
                         help="do not transcode, just split to parts using same audio codec")
     parser.add_argument("--ignore-chapters", action="store_true",
@@ -196,7 +196,7 @@ def split_file(fname, pool, opts):
 
     chapters = None
     if opts.chapters:
-        chapters = file_to_chapters_iter(opts.chapters)
+        chapters = file_to_chapters_iter(opts.chapters, opts.cue_format)
     elif not opts.ignore_chapters:
         chapters = meta_to_chapters_iter(fname)
 
@@ -342,19 +342,35 @@ def cue_time_from_secs(t):
     return "{m}:{s}:{f:02}".format(m=m, s=s, f=f)
 
 
-def file_to_chapters_iter(f):
-    has_header = csv.Sniffer().has_header(f.read(512))
-    f.seek(0)
-    reader = csv.reader(f)
+def file_to_chapters_iter(f, cue_format):
+    if not cue_format:
+        has_header = csv.Sniffer().has_header(f.read(512))
+        f.seek(0)
+        reader = csv.reader(f)
 
-    if has_header:
-        next(reader, None)
+        if has_header:
+            next(reader, None)
 
-    def format_line(l):
-        if len(l) < 3:
-            raise Exception("Chapters file lines must have at least 3 fields")
-        return safe_name(l[0]), secs_from_time(l[1]), secs_from_time(l[2]) if l[2] else None
-    return map(format_line, reader)
+        def format_line(l):
+            if len(l) < 3:
+                raise Exception("Chapters file lines must have at least 3 fields")
+            return safe_name(l[0]), secs_from_time(l[1]), secs_from_time(l[2]) if l[2] else None
+        return map(format_line, reader)
+    else:
+        cue_lines = f.read().splitlines()
+        chapters = []
+        for line in cue_lines:
+            if line.startswith("TRACK "):
+                chapters.append({})
+            if re.match(r"\s+TITLE ", line):
+                chapters[-1]["title"] = safe_name(" ".join(line.strip().split(" ")[1:]).replace("\"", ""))
+            if re.match(r"\s+INDEX 01 ", line):
+                t = list(map(int, " ".join(line.strip().split(" ")[2:]).replace("\"", "").split(":")))
+                chapters[-1]["start"] = 60 * t[0] + t[1] + t[2] / 75.0
+                if len(chapters) > 1:
+                    chapters[-2]["end"] = chapters[-1]["start"]
+        chapters[-1]["end"] = None
+        return map(lambda t: tuple(t.values()), chapters)
 
 
 def _run_ffprobe_for_chapters(f):

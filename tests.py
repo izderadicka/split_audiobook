@@ -22,7 +22,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(2*3600+21*60+11.5, s3)
 
     def test_chapters_file(self):
-        cs = file_to_chapters_iter(io.StringIO(DUMMY_CHAPTERS))
+        cs = file_to_chapters_iter(io.StringIO(DUMMY_CHAPTERS), False)
         cs = list(cs)
         self.assertEqual(3, len(cs))
         self.assertEqual("Beers,tears and queers", cs[1][0])
@@ -33,10 +33,18 @@ class Tests(unittest.TestCase):
 
     def test_chapters_file2(self):
         with open("test_data/external_chapters.csv") as f:
-            cs = file_to_chapters_iter(f)
+            cs = file_to_chapters_iter(f, False)
             cs = list(cs)
         self.assertEqual(17, len(cs))
         self.assertEqual(cs[1][2], 29*60+46.1)
+        self.assertTrue(cs[16][2] is None)
+
+    def test_cue_file(self):
+        with open("test_data/external_chapters.cue") as f:
+            cs = file_to_chapters_iter(f, True)
+            cs = list(cs)
+        self.assertEqual(17, len(cs))
+        self.assertEqual(cs[1][2], 29*60+46+8/75)
         self.assertTrue(cs[16][2] is None)
 
     def test_chapters_meta(self):
