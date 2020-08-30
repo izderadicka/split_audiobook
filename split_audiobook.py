@@ -324,7 +324,12 @@ def secs_from_time(t):
 
 
 def file_to_chapters_iter(f):
+    has_header = csv.Sniffer().has_header(f.read(512))
+    f.seek(0)
     reader = csv.reader(f)
+
+    if has_header:
+        next(reader, None)
 
     def format_line(l):
         if len(l) < 3:
