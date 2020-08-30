@@ -224,9 +224,11 @@ def split_file(fname, pool, opts):
     op = opus_params(opts.quality) if not opts.split_only else [
         "-acodec", "copy"]
     ext = ".opus" if not opts.split_only else map_ext(format_ext)
+    chapters = list(chapters)
+    digits = len(str(len(chapters)))
     for i, (chap, start, end) in enumerate(chapters):
         pool.submit(transcode_chapter, fname, dest_dir, op, ext,
-                    i, chap, start, end, opts.activation_bytes)
+                    digits, i, chap, start, end, opts.activation_bytes)
     pool.submit(extract_cover, fname, dest_dir)
 
 
@@ -244,7 +246,7 @@ def extract_cover(fname, dest_dir):
                   fname, p.returncode, err)
 
 
-def transcode_chapter(fname, dest_dir, op, ext, i, chap, start, end, activation_bytes=None):
+def transcode_chapter(fname, dest_dir, op, ext, digits, i, chap, start, end, activation_bytes=None):
     log.debug("transcoding chapter %s", repr((dest_dir, i, chap, start, end)))
     try:
         params = ["ffmpeg", "-v", "error", "-nostdin"]
@@ -257,7 +259,7 @@ def transcode_chapter(fname, dest_dir, op, ext, i, chap, start, end, activation_
         params.extend(["-metadata",  'title="%s"' % chap,
                        "-metadata", 'track="%d"' % (i+1)
                        ])
-        out_file = os.path.join(dest_dir, "%03d - %s%s" % (i, chap, ext))
+        out_file = os.path.join(dest_dir, "{i:0{digits}} - {chap}{ext}".format(i=i, digits=digits, chap=chap, ext=ext))
         params.append(out_file)
     except Exception as e:
         log.exception("Params preparation exception")
