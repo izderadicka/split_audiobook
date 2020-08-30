@@ -10,6 +10,7 @@ import re
 import concurrent.futures as futures
 import multiprocessing
 import shutil
+from math import floor
 from functools import reduce
 
 log = logging.getLogger()
@@ -70,6 +71,8 @@ def parse_args(args):
                         help="dry run, just prints calculated parts and exits")
     parser.add_argument("--write-chapters", action="store_true",
                         help="instead of spliting file, it just writes chapters into original_file.chapters CSV file")
+    parser.add_argument("--cue-format", action="store_true",
+                        help="use cue format instead of CSV to write chapters")
     parser.add_argument("-o", "--split-only", action="store_true",
                         help="do not transcode, just split to parts using same audio codec")
     parser.add_argument("--ignore-chapters", action="store_true",
@@ -151,11 +154,20 @@ def print_chapters(chapters, opts):
                   (i, chap, start, end, end-start))
 
 
-def write_chapters(chapters, audio_file):
-    with open(audio_file+".chapters", 'w', newline='', encoding='utf-8') as f:
-        writer = csv.writer(f)
-        writer.writerow(('title', 'start', 'end'))
-        writer.writerows(chapters)
+def write_chapters(chapters, audio_file, cue_format):
+    if not cue_format:
+        with open(audio_file+".chapters", 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(('title', 'start', 'end'))
+            writer.writerows(chapters)
+    else:
+        with open(audio_file+".cue", 'w', encoding='utf-8') as f:
+            ext = os.path.splitext(audio_file)[1][1:].upper()
+            f.write("FILE \"{filename}\" {ext}\n".format(filename=os.path.basename(audio_file), ext=ext))
+            for track, (chap, start, _) in enumerate(chapters, 1):
+                f.write("TRACK {track} AUDIO\n".format(track=track))
+                f.write("  TITLE \"{title}\"\n".format(title=chap))
+                f.write("  INDEX 01 {start}\n".format(start=cue_time_from_secs(start)))
 
 
 EXT_MAP = {".m4b": ".m4a", ".aax": ".m4a"}
@@ -197,7 +209,7 @@ def split_file(fname, pool, opts):
         return
 
     if opts.write_chapters:
-        write_chapters(chapters, fname)
+        write_chapters(chapters, fname, opts.cue_format)
         return
 
     if os.path.exists(dest_dir):
@@ -321,6 +333,13 @@ def secs_from_time(t):
     data = map(float, data)
     secs = reduce(lambda x, y: (x[0]+x[1]*y, x[1]*60), data, (0, 1))
     return secs[0]
+
+
+def cue_time_from_secs(t):
+    m = int(t / 60)
+    s = int(t - m * 60)
+    f = floor(t % 1 * 75)
+    return "{m}:{s}:{f:02}".format(m=m, s=s, f=f)
 
 
 def file_to_chapters_iter(f):
