@@ -15,7 +15,7 @@ from functools import reduce
 
 log = logging.getLogger()
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
