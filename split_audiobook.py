@@ -10,18 +10,19 @@ import re
 import concurrent.futures as futures
 import multiprocessing
 import shutil
+from math import floor
 from functools import reduce
 
 log = logging.getLogger()
 
-__version__ = "0.2.1"
+__version__ = "0.3.0"
 
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
 Split points are either chapters defined in the audiobook, or supplied in external CSV file,
 or split happens in silence periods in approximately same distance (--length).
 Use --dry option to see how audio will be split, without actual conversion or --write-chapters 
-to write chapters into separate file in simple csv format.
+to write chapters into separate file in simple CSV format.
 Requires ffmpeg and ffprobe version v >= 2.8.11
 Supports input formats m4a, m4b, mp3, aax (mka should also work but not tested)
 """
@@ -54,10 +55,12 @@ def parse_args(args):
     parser = argparse.ArgumentParser(
         description=ABOUT,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("files", metavar="FILE",
-                        nargs="+", help="audiobook files")
-    parser.add_argument("--search-dir", action="store_true", help="if FILE argument is directory it will recusivelly search for audio files and split them")
-    parser.add_argument("--debug", action="store_true", help="debug logging")
+    parser.add_argument("files", metavar="FILE", nargs="+",
+                        help="audiobook files")
+    parser.add_argument("--search-dir", action="store_true",
+                        help="if FILE argument is directory it will recusivelly search for audio files and split them")
+    parser.add_argument("--debug", action="store_true",
+                        help="debug logging")
     parser.add_argument("--delete", action="store_true",
                         help="delete original file after split and conversion")
     parser.add_argument("-s", "--silence", type=int, default=30,
@@ -66,8 +69,10 @@ def parse_args(args):
                         help="minimal duration of silence, default works fine, so change only, if necessary")
     parser.add_argument("--dry", action="store_true",
                         help="dry run, just prints calculated parts and exits")
-    parser.add_argument("--write-chapters", action="store_true", 
-        help="instead of spliting file, it just writes chapters into original_file.chapters csv file")
+    parser.add_argument("--write-chapters", action="store_true",
+                        help="instead of spliting file, it just writes chapters into original_file.chapters CSV file")
+    parser.add_argument("--cue-format", action="store_true",
+                        help="use cue format instead of CSV to read and write chapters")
     parser.add_argument("-o", "--split-only", action="store_true",
                         help="do not transcode, just split to parts using same audio codec")
     parser.add_argument("--ignore-chapters", action="store_true",
@@ -78,11 +83,12 @@ def parse_args(args):
                         help="opus codec quality params")
     parser.add_argument("-l", "--length", type=float, default=1800,
                         help="duration of split segment in seconds (in case chapers are not available)")
-    parser.add_argument("-c", "--chapters", type=argparse.FileType("r"),
+    parser.add_argument("-c", "--chapters", type=argparse.FileType("r", encoding="utf-8", errors="replace"),
                         help="CSV file with chapters information, each line should contain: chapter_name,start_in_secs,end_in_secs  (optionaly start and end can be in form hh:mm:ss.m)")
     parser.add_argument("--activation-bytes",
                         help="activation bytes for aax format")
-    parser.add_argument("--version", action="version", version=__version__, help="shows version")
+    parser.add_argument("--version", action="version", version=__version__,
+                        help="shows version")
     return parser.parse_args(args)
 
 
@@ -91,8 +97,8 @@ def test_ff():
 
 
 def test_exe(name):
-    import sys 
-    if sys.platform == "win32" and not name.endswith(".exe"): 
+    import sys
+    if sys.platform == "win32" and not name.endswith(".exe"):
         name += ".exe"
     for p in os.environ.get("PATH", "").split(os.pathsep):
         exe = os.path.join(p, name)
@@ -116,12 +122,12 @@ def main(args=sys.argv[1:]):
     for fname in opts.files:
         if os.path.isdir(fname):
             if opts.search_dir:
-                files=[]
+                files = []
                 for dirpath, _dirnames, filenames in os.walk(fname):
                     for f in filenames:
                         ext = os.path.splitext(f)[1]
                         if ext in (".mp3", ".m4b", ".m4a", ".mka", ".aax"):
-                            files.append(os.path.join(dirpath,f))
+                            files.append(os.path.join(dirpath, f))
                 for f in files:
                     try:
                         split_file(f, pool, opts)
@@ -147,12 +153,21 @@ def print_chapters(chapters, opts):
             print("%03d - %s  (%0.2f - %0.2f dur: %0.2f)" %
                   (i, chap, start, end, end-start))
 
-def write_chapters(chapters, audio_file):
-    with open(audio_file+".chapters",'w') as f:
-        writer = csv.writer(f)
-        writer.writerow(('title', 'start', 'end'))
-        writer.writerows(chapters)
 
+def write_chapters(chapters, audio_file, cue_format):
+    if not cue_format:
+        with open(audio_file+".chapters", 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(('title', 'start', 'end'))
+            writer.writerows(chapters)
+    else:
+        with open(audio_file+".cue", 'w', encoding='utf-8') as f:
+            ext = os.path.splitext(audio_file)[1][1:].upper()
+            f.write("FILE \"{filename}\" {ext}\n".format(filename=os.path.basename(audio_file), ext=ext))
+            for track, (chap, start, _) in enumerate(chapters, 1):
+                f.write("TRACK {track} AUDIO\n".format(track=track))
+                f.write("  TITLE \"{title}\"\n".format(title=chap))
+                f.write("  INDEX 01 {start}\n".format(start=cue_time_from_secs(start)))
 
 
 EXT_MAP = {".m4b": ".m4a", ".aax": ".m4a"}
@@ -181,7 +196,7 @@ def split_file(fname, pool, opts):
 
     chapters = None
     if opts.chapters:
-        chapters = file_to_chapters_iter(opts.chapters)
+        chapters = file_to_chapters_iter(opts.chapters, opts.cue_format)
     elif not opts.ignore_chapters:
         chapters = meta_to_chapters_iter(fname)
 
@@ -194,14 +209,14 @@ def split_file(fname, pool, opts):
         return
 
     if opts.write_chapters:
-        write_chapters(chapters, fname)
+        write_chapters(chapters, fname, opts.cue_format)
         return
 
     if os.path.exists(dest_dir):
         if opts.remove:
             shutil.rmtree(dest_dir)
         else:
-            log.warn("Directory %s exists skipping split", dest_dir)
+            log.warning("Directory %s exists skipping split", dest_dir)
             return
 
     os.mkdir(dest_dir)
@@ -209,9 +224,11 @@ def split_file(fname, pool, opts):
     op = opus_params(opts.quality) if not opts.split_only else [
         "-acodec", "copy"]
     ext = ".opus" if not opts.split_only else map_ext(format_ext)
+    chapters = list(chapters)
+    digits = len(str(len(chapters)))
     for i, (chap, start, end) in enumerate(chapters):
         pool.submit(transcode_chapter, fname, dest_dir, op, ext,
-                    i, chap, start, end, opts.activation_bytes)
+                    digits, i, chap, start, end, opts.activation_bytes)
     pool.submit(extract_cover, fname, dest_dir)
 
 
@@ -229,7 +246,7 @@ def extract_cover(fname, dest_dir):
                   fname, p.returncode, err)
 
 
-def transcode_chapter(fname, dest_dir, op, ext, i, chap, start, end, activation_bytes=None):
+def transcode_chapter(fname, dest_dir, op, ext, digits, i, chap, start, end, activation_bytes=None):
     log.debug("transcoding chapter %s", repr((dest_dir, i, chap, start, end)))
     try:
         params = ["ffmpeg", "-v", "error", "-nostdin"]
@@ -242,7 +259,7 @@ def transcode_chapter(fname, dest_dir, op, ext, i, chap, start, end, activation_
         params.extend(["-metadata",  'title="%s"' % chap,
                        "-metadata", 'track="%d"' % (i+1)
                        ])
-        out_file = os.path.join(dest_dir, "%03d - %s%s" % (i, chap, ext))
+        out_file = os.path.join(dest_dir, "{i:0{digits}} - {chap}{ext}".format(i=i, digits=digits, chap=chap, ext=ext))
         params.append(out_file)
     except Exception as e:
         log.exception("Params preparation exception")
@@ -320,14 +337,42 @@ def secs_from_time(t):
     return secs[0]
 
 
-def file_to_chapters_iter(f):
-    reader = csv.reader(f)
+def cue_time_from_secs(t):
+    m = int(t / 60)
+    s = int(t - m * 60)
+    f = floor(t % 1 * 75)
+    return "{m}:{s}:{f:02}".format(m=m, s=s, f=f)
 
-    def format_line(l):
-        if len(l) < 3:
-            raise Exception("Chapters file lines must have at least 3 fields")
-        return safe_name(l[0]), secs_from_time(l[1]), secs_from_time(l[2]) if l[2] else None
-    return map(format_line, reader)
+
+def file_to_chapters_iter(f, cue_format):
+    if not cue_format:
+        has_header = csv.Sniffer().has_header(f.read(512))
+        f.seek(0)
+        reader = csv.reader(f)
+
+        if has_header:
+            next(reader, None)
+
+        def format_line(l):
+            if len(l) < 3:
+                raise Exception("Chapters file lines must have at least 3 fields")
+            return safe_name(l[0]), secs_from_time(l[1]), secs_from_time(l[2]) if l[2] else None
+        return map(format_line, reader)
+    else:
+        cue_lines = f.read().splitlines()
+        chapters = []
+        for line in cue_lines:
+            if line.startswith("TRACK "):
+                chapters.append({})
+            if re.match(r"\s+TITLE ", line):
+                chapters[-1]["title"] = safe_name(" ".join(line.strip().split(" ")[1:]).replace("\"", ""))
+            if re.match(r"\s+INDEX 01 ", line):
+                t = list(map(int, " ".join(line.strip().split(" ")[2:]).replace("\"", "").split(":")))
+                chapters[-1]["start"] = 60 * t[0] + t[1] + t[2] / 75.0
+                if len(chapters) > 1:
+                    chapters[-2]["end"] = chapters[-1]["start"]
+        chapters[-1]["end"] = None
+        return map(lambda t: tuple(t.values()), chapters)
 
 
 def _run_ffprobe_for_chapters(f):
