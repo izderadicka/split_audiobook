@@ -447,6 +447,7 @@ class SilenceDetector:
     START_RE = re.compile(r"silence_start: (\d+\.?\d*)")
     END_RE = re.compile(r"silence_end: (\d+\.?\d*)")
     DURATION_RE = re.compile("Duration: ([0-9:.]+)")
+    FRAME_RE = re.compile(r"frame=.+time=([0-9:.]+)")
 
     def _run_ffmpeg(self):
         p = subprocess.Popen(["ffmpeg",
@@ -475,25 +476,36 @@ class SilenceDetector:
                 break
         if self.total_duration is None:
             raise Exception("Cannot get total duration from media file")
-
-        data = filter(lambda x: self.LINE_RE.match(x), data)
+        
+        real_duration = None
         for item in data:
-            if self._start is None:
-                m = self.START_RE.search(item)
-                if m:
-                    start = float(m.group(1))
-                    self._start = start
+            if self.LINE_RE.match(item):
+                if self._start is None:
+                    m = self.START_RE.search(item)
+                    if m:
+                        start = float(m.group(1))
+                        self._start = start
+                else:
+                    m = self.END_RE.search(item)
+                    if m:
+                        end = float(m.group(1))
+                        assert self._start <= end
+                        self._silences.append((self._start, end))
+                        self._start = None
             else:
-                m = self.END_RE.search(item)
+                m = self.FRAME_RE.match(item)
                 if m:
-                    end = float(m.group(1))
-                    assert self._start <= end
-                    self._silences.append((self._start, end))
-                    self._start = None
-        # last start is at end of file - use it to correct total_duration
+                    real_duration = m.group(1)
+        # correct total_duration
+        if real_duration:
+            real_duration = secs_from_time(real_duration)
+            if real_duration > self.total_duration:
+                self.total_duration = real_duration
+
         if self._start and self._start > self.total_duration:
             self.total_duration = self._start
-
+        elif self._silences[-1][1] > self.total_duration:
+            self.total_duration = self._silences[-1][1]
 
 if __name__ == "__main__":
     main()
