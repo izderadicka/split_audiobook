@@ -15,7 +15,7 @@ from functools import reduce
 
 log = logging.getLogger()
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
@@ -346,7 +346,7 @@ def cue_time_from_secs(t):
 
 def file_to_chapters_iter(f, cue_format):
     if not cue_format:
-        has_header = csv.Sniffer().has_header(f.read(512))
+        has_header = csv.Sniffer().has_header(f.read(1024))
         f.seek(0)
         reader = csv.reader(f)
 
@@ -490,6 +490,9 @@ class SilenceDetector:
                     assert self._start <= end
                     self._silences.append((self._start, end))
                     self._start = None
+        # last start is at end of file - use it to correct total_duration
+        if self._start and self._start > self.total_duration:
+            self.total_duration = self._start
 
 
 if __name__ == "__main__":
