@@ -35,4 +35,3 @@ jobs:
       run: |
         python tests.py
         
-        pytest
