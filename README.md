@@ -1,6 +1,8 @@
 split_audiobook
 ===============
 
+![build workflow](https://github.com/izderadicka/split_audiobook/actions/workflows/python-app.yml/badge.svg)
+
 Simple python script (Python 3.5+), that wraps ffmpeg and ffprobe and enables to split large audiobook file into smaller parts.
 There are basically 3 methods supported:
 
