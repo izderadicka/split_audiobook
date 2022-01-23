@@ -8,7 +8,7 @@ There are basically 3 methods supported:
 
 * if file contains chapters metadata, then it's split to chapters - it's probably the best case
 * you can supply CSV file with chapters definition (name, start, end). You can create this file yourself, by listening to the original file (good  tool is audacity - detect silence (Analyze/Silence Finder) spots and listen around silences to find chapters beginnigs, write table in a spreadsheet - name, start, end and save as CSV)
-* split into pieces of approximately same size (defined by `--length`) on silence moments in audio (for best listening expeperience). This method is used if none of previous two is available.
+* split into pieces of approximately same size (defined by `--length`) on silence moments in audio (for best listening experience). This method is used if none of previous two is available.
 
 You can use `--dry` argument to see what actual split will be.
 
