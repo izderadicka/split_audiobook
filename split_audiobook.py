@@ -15,7 +15,7 @@ from functools import reduce
 
 log = logging.getLogger()
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 ABOUT = """
 Splits large audiobook files into smaller parts which are then optionally encoded with Opus codec.
@@ -87,6 +87,8 @@ def parse_args(args):
                         help="CSV file with chapters information, each line should contain: chapter_name,start_in_secs,end_in_secs  (optionaly start and end can be in form hh:mm:ss.m)")
     parser.add_argument("--activation-bytes",
                         help="activation bytes for aax format")
+    parser.add_argument("--no-subdir", action="store_true",
+                        help="do not create subdirectory for split files, rather creates in same directory as original file")
     parser.add_argument("--version", action="version", version=__version__,
                         help="shows version")
     return parser.parse_args(args)
@@ -134,7 +136,8 @@ def main(args=sys.argv[1:]):
                     except:
                         log.exception("Error during splitting file %s", f)
             else:
-                sys.exit("Arguments must be file, but you can force directory with --search-dir")
+                sys.exit(
+                    "Arguments must be files, but you can force directory with --search-dir")
         else:
             try:
                 split_file(fname, pool, opts)
@@ -163,11 +166,13 @@ def write_chapters(chapters, audio_file, cue_format):
     else:
         with open(audio_file+".cue", 'w', encoding='utf-8') as f:
             ext = os.path.splitext(audio_file)[1][1:].upper()
-            f.write("FILE \"{filename}\" {ext}\n".format(filename=os.path.basename(audio_file), ext=ext))
+            f.write("FILE \"{filename}\" {ext}\n".format(
+                filename=os.path.basename(audio_file), ext=ext))
             for track, (chap, start, _) in enumerate(chapters, 1):
                 f.write("TRACK {track} AUDIO\n".format(track=track))
                 f.write("  TITLE \"{title}\"\n".format(title=chap))
-                f.write("  INDEX 01 {start}\n".format(start=cue_time_from_secs(start)))
+                f.write("  INDEX 01 {start}\n".format(
+                    start=cue_time_from_secs(start)))
 
 
 EXT_MAP = {".m4b": ".m4a", ".aax": ".m4a"}
@@ -190,7 +195,8 @@ def split_file(fname, pool, opts):
             if os.access(activation_file, os.R_OK):
                 opts.activation_bytes = open(activation_file).read().strip()
         if not opts.activation_bytes or len(opts.activation_bytes) != 8:
-            raise Exception("For aax file activation bytes must be provided and activation bytes must be 8 chars long")
+            raise Exception(
+                "For aax file activation bytes must be provided and activation bytes must be 8 chars long")
     elif opts.activation_bytes and format_ext != ".aax":
         opts.activation_bytes = None
 
@@ -212,14 +218,17 @@ def split_file(fname, pool, opts):
         write_chapters(chapters, fname, opts.cue_format)
         return
 
-    if os.path.exists(dest_dir):
-        if opts.remove:
-            shutil.rmtree(dest_dir)
-        else:
-            log.warning("Directory %s exists skipping split", dest_dir)
-            return
+    if not opts.no_subdir:
+        if os.path.exists(dest_dir):
+            if opts.remove:
+                shutil.rmtree(dest_dir)
+            else:
+                log.warning("Directory %s exists skipping split", dest_dir)
+                return
 
-    os.mkdir(dest_dir)
+        os.mkdir(dest_dir)
+    else:
+        dest_dir = base_dir
 
     op = opus_params(opts.quality) if not opts.split_only else [
         "-acodec", "copy"]
@@ -227,9 +236,41 @@ def split_file(fname, pool, opts):
     chapters = list(chapters)
     digits = len(str(len(chapters)))
     for i, (chap, start, end) in enumerate(chapters):
-        pool.submit(transcode_chapter, fname, dest_dir, op, ext,
-                    digits, i, chap, start, end, opts.activation_bytes)
+        if opts.no_subdir:
+            out_file = output_file_name_in_same_dir(
+                dest_dir, base_name, i, 2, ext)
+        else:
+            out_file = output_file_name_in_subdir(
+                dest_dir, i, digits, chap, ext)
+
+            if os.path.exists(out_file):
+                if opts.remove:
+                    os.remove(out_file)
+                else:
+                    log.warning("File %s exists skipping split", out_file)
+                    continue
+
+        pool.submit(transcode_chapter, fname, out_file, op, i,
+                    chap, start, end, opts.activation_bytes)
     pool.submit(extract_cover, fname, dest_dir)
+
+
+def output_file_name_in_same_dir(dest_dir, base_name, i, digits, ext):
+    number_prefix = re.match(r"^(\d+)", base_name)
+    chapter_number = "{i:0{digits}}".format(i=i, digits=digits)
+    if number_prefix:
+        prefix_end = number_prefix.end()
+        prefix = number_prefix.group()
+        fname = "{prefix}-{chapter_number}{rest}".format(
+            prefix=prefix, chapter_number=chapter_number, rest=base_name[prefix_end:])
+    else:
+        fname = "{rest} - {chapter_number}".format(
+            chapter_number=chapter_number, rest=base_name)
+    return os.path.join(dest_dir, fname+ext)
+
+
+def output_file_name_in_subdir(dest_dir, i, digits, chap, ext):
+    return os.path.join(dest_dir, "{i:0{digits}} - {chap}{ext}".format(i=i, digits=digits, chap=chap, ext=ext))
 
 
 def extract_cover(fname, dest_dir):
@@ -246,8 +287,8 @@ def extract_cover(fname, dest_dir):
                   fname, p.returncode, err)
 
 
-def transcode_chapter(fname, dest_dir, op, ext, digits, i, chap, start, end, activation_bytes=None):
-    log.debug("transcoding chapter %s", repr((dest_dir, i, chap, start, end)))
+def transcode_chapter(fname, out_file, op, i, chap, start, end, activation_bytes=None):
+    log.debug("transcoding chapter %s", repr((i, chap, start, end)))
     try:
         params = ["ffmpeg", "-v", "error", "-nostdin"]
         if activation_bytes:
@@ -259,7 +300,6 @@ def transcode_chapter(fname, dest_dir, op, ext, digits, i, chap, start, end, act
         params.extend(["-metadata",  'title="%s"' % chap,
                        "-metadata", 'track="%d"' % (i+1)
                        ])
-        out_file = os.path.join(dest_dir, "{i:0{digits}} - {chap}{ext}".format(i=i, digits=digits, chap=chap, ext=ext))
         params.append(out_file)
     except Exception as e:
         log.exception("Params preparation exception")
@@ -355,7 +395,8 @@ def file_to_chapters_iter(f, cue_format):
 
         def format_line(l):
             if len(l) < 3:
-                raise Exception("Chapters file lines must have at least 3 fields")
+                raise Exception(
+                    "Chapters file lines must have at least 3 fields")
             return safe_name(l[0]), secs_from_time(l[1]), secs_from_time(l[2]) if l[2] else None
         return map(format_line, reader)
     else:
@@ -365,9 +406,11 @@ def file_to_chapters_iter(f, cue_format):
             if line.startswith("TRACK "):
                 chapters.append({})
             if re.match(r"\s+TITLE ", line):
-                chapters[-1]["title"] = safe_name(" ".join(line.strip().split(" ")[1:]).replace("\"", ""))
+                chapters[-1]["title"] = safe_name(
+                    " ".join(line.strip().split(" ")[1:]).replace("\"", ""))
             if re.match(r"\s+INDEX 01 ", line):
-                t = list(map(int, " ".join(line.strip().split(" ")[2:]).replace("\"", "").split(":")))
+                t = list(map(int, " ".join(line.strip().split(
+                    " ")[2:]).replace("\"", "").split(":")))
                 chapters[-1]["start"] = 60 * t[0] + t[1] + t[2] / 75.0
                 if len(chapters) > 1:
                     chapters[-2]["end"] = chapters[-1]["start"]
@@ -476,7 +519,7 @@ class SilenceDetector:
                 break
         if self.total_duration is None:
             raise Exception("Cannot get total duration from media file")
-        
+
         real_duration = None
         for item in data:
             if self.LINE_RE.match(item):
@@ -506,6 +549,7 @@ class SilenceDetector:
             self.total_duration = self._start
         elif self._silences[-1][1] > self.total_duration:
             self.total_duration = self._silences[-1][1]
+
 
 if __name__ == "__main__":
     main()
